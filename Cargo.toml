@@ -2,6 +2,7 @@
 name = "deskscope"
 version = "0.1.0"
 edition = "2024"
+build = "build.rs"
 
 [dependencies]
 chrono = "0.4"
@@ -10,7 +11,9 @@ drm-fourcc = "2.2"
 image = { version = "0.25", default-features = false, features = ["png"] }
 libcamera = { version = "0.7", features = ["vendor_rpi"] }
 serde = { version = "1.0", features = ["derive"] }
-softbuffer = "0.4"
+slint = "1.16"
 toml = "1.1"
-winit = "0.30"
 rppal = "0.22"
+
+[build-dependencies]
+slint-build = "1.16"

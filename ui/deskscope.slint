@@ -1,0 +1,174 @@
+component ActionButton inherits Rectangle {
+    in property <string> text;
+    in property <brush> bg;
+    in property <length> button-font-size;
+    callback clicked();
+
+    height: 12%;
+    background: bg;
+    border-width: 4px;
+    border-color: white;
+
+    Text {
+        text: root.text;
+        color: white;
+        font-size: root.button-font-size;
+        font-weight: 600;
+    }
+
+    TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
+component ToggleButton inherits Rectangle {
+    in property <string> label;
+    in property <string> value;
+    in property <length> button-font-size;
+    callback clicked();
+
+    height: 12%;
+    background: #444488;
+    border-width: 4px;
+    border-color: white;
+
+    HorizontalLayout {
+        alignment: center;
+        spacing: 10px;
+
+        Text {
+            text: root.label + ":";
+            color: white;
+            font-size: root.button-font-size;
+            font-weight: 600;
+        }
+        Text {
+            text: root.value;
+            color: #33CCFF;
+            font-size: root.button-font-size;
+            font-weight: 700;
+        }
+    }
+
+    TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
+export component DeskscopeWindow inherits Window {
+    in property <image> camera-image;
+    in property <bool> menu-visible: false;
+    in property <bool> powered-off: false;
+    in property <string> status-text: "";
+    in property <string> orient-value: "Landscape";
+    in property <string> flip-v-value: "Off";
+    in property <string> flip-h-value: "Off";
+
+    callback show-menu();
+    callback dismiss-menu();
+    callback wake();
+    callback power-off();
+    callback take-photo();
+    callback toggle-orientation();
+    callback toggle-flip-v();
+    callback toggle-flip-h();
+
+    title: "Deskscope";
+    background: black;
+    full-screen: true;
+
+    // Derived from the window size so button text scales without creating
+    // a binding loop inside the reusable button components.
+    property <length> menu-font-size: self.height * 6%;
+
+    // Camera feed fills the window.
+    Image {
+        width: root.width;
+        height: root.height;
+        source: camera-image;
+        image-fit: cover;
+        image-rendering: smooth;
+
+        TouchArea {
+            clicked => {
+                if root.powered-off {
+                    root.wake();
+                } else if !root.menu-visible {
+                    root.show-menu();
+                } else {
+                    root.dismiss-menu();
+                }
+            }
+        }
+    }
+
+    // Menu overlay with settings and actions.
+    if root.menu-visible && !root.powered-off: Rectangle {
+        width: root.width;
+        height: root.height;
+        background: #CC000000;
+
+        // Tap outside the button column dismisses the menu.
+        TouchArea {
+            clicked => { root.dismiss-menu(); }
+        }
+
+        VerticalLayout {
+            width: root.width * 80%;
+            height: root.height * 70%;
+            alignment: center;
+            spacing: root.height * 2.5%;
+
+            ActionButton {
+                text: "Power off";
+                bg: #CC3333;
+                button-font-size: root.menu-font-size;
+                clicked => { root.power-off(); }
+            }
+            ActionButton {
+                text: "Take photo";
+                bg: #33CC33;
+                button-font-size: root.menu-font-size;
+                clicked => { root.take-photo(); }
+            }
+            ToggleButton {
+                label: "Orientation";
+                value: root.orient-value;
+                button-font-size: root.menu-font-size;
+                clicked => { root.toggle-orientation(); }
+            }
+            ToggleButton {
+                label: "Flip V";
+                value: root.flip-v-value;
+                button-font-size: root.menu-font-size;
+                clicked => { root.toggle-flip-v(); }
+            }
+            ToggleButton {
+                label: "Flip H";
+                value: root.flip-h-value;
+                button-font-size: root.menu-font-size;
+                clicked => { root.toggle-flip-h(); }
+            }
+        }
+    }
+
+    // Transient status message overlay.
+    if root.status-text != "": Text {
+        x: (root.width - self.width) / 2;
+        y: root.height * 10%;
+        text: root.status-text;
+        color: #33CCFF;
+        font-size: root.width / 20;
+        font-weight: 700;
+    }
+
+    // Power-off overlay absorbs all input until a tap wakes the device.
+    if root.powered-off: Rectangle {
+        width: root.width;
+        height: root.height;
+        background: black;
+        TouchArea {
+            clicked => { root.wake(); }
+        }
+    }
+}
