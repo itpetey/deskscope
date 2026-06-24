@@ -2,7 +2,7 @@ use std::{
     marker::PhantomData,
     num::NonZeroU32,
     path::PathBuf,
-    sync::{Arc, Mutex, mpsc},
+    sync::{mpsc, Arc, Mutex},
     time::{Duration, Instant},
 };
 
@@ -33,9 +33,26 @@ const PIXEL_FORMAT_RGB888: PixelFormat = PixelFormat::new(DrmFourcc::Rgb888 as u
 const MENU_BG: u32 = 0xCC00_0000;
 const BTN_POWER_OFF: u32 = 0xFFCC_3333;
 const BTN_TAKE_PHOTO: u32 = 0xFF33_CC33;
+const BTN_SETTING_ORIENT: u32 = 0xFF44_4488;
+const BTN_SETTING_FLIP_V: u32 = 0xFF44_4488;
+const BTN_SETTING_FLIP_H: u32 = 0xFF44_4488;
 const BTN_BORDER: u32 = 0xFFFFFFFF;
 const TEXT_COLOR: u32 = 0xFFFFFFFF;
+const TEXT_HIGHLIGHT: u32 = 0xFF33_CCFF;
 const STATUS_COLOR: u32 = 0xFF33_CCFF;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Orientation {
+    Landscape,
+    Portrait,
+}
+
+#[derive(Debug, Clone)]
+struct Settings {
+    orientation: Orientation,
+    flip_vertical: bool,
+    flip_horizontal: bool,
+}
 
 /// CLI arguments for deskscope.
 #[derive(Debug, Parser)]
@@ -54,6 +71,25 @@ struct Config {
     /// Set to 0 or omit to disable auto power-off.
     #[serde(default)]
     power_off_after_secs: u64,
+
+    /// Image and menu orientation: "landscape" or "portrait".
+    /// Defaults to "landscape".
+    #[serde(default = "default_orientation")]
+    orientation: String,
+
+    /// Whether to vertically flip the camera image.
+    /// Defaults to false.
+    #[serde(default)]
+    flip_vertical: bool,
+
+    /// Whether to horizontally flip the camera image.
+    /// Defaults to false.
+    #[serde(default)]
+    flip_horizontal: bool,
+}
+
+fn default_orientation() -> String {
+    "landscape".to_string()
 }
 
 fn load_config() -> Config {
@@ -77,7 +113,7 @@ struct Button {
     y: f64,
     w: f64,
     h: f64,
-    label: &'static str,
+    label: String,
     color: u32,
 }
 
@@ -92,6 +128,7 @@ struct App<'a> {
     context: Option<softbuffer::Context<Arc<Window>>>,
     surface: Option<softbuffer::Surface<Arc<Window>, Arc<Window>>>,
     config: Config,
+    settings: Settings,
     menu_visible: bool,
     powered_off: bool,
     last_activity: Instant,
@@ -104,32 +141,102 @@ struct App<'a> {
 }
 
 impl<'a> App<'a> {
-    fn buttons(&self, win_w: f64, win_h: f64) -> [Button; 2] {
-        let btn_w = win_w * 0.80;
-        let btn_h = win_h * 0.35;
-        let gap = win_h * 0.05;
-        let x = (win_w - btn_w) / 2.0;
-        let y1 = (win_h - 2.0 * btn_h - gap) / 2.0;
-        let y2 = y1 + btn_h + gap;
+    fn buttons(&self, win_w: f64, win_h: f64) -> Vec<Button> {
+        let btn_w_main = win_w * 0.80;
+        let btn_w_toggle = match self.settings.orientation {
+            Orientation::Landscape => win_w * 0.80,
+            Orientation::Portrait => win_w * 0.60,
+        };
+        let count = 5u32;
+        let btn_h = win_h * 0.12;
+        let gap = win_h * 0.025;
+        let total_h = count as f64 * btn_h + (count - 1) as f64 * gap;
+        let start_y = (win_h - total_h) / 2.0;
+        let x_main = (win_w - btn_w_main) / 2.0;
+        let x_toggle = (win_w - btn_w_toggle) / 2.0;
 
-        [
-            Button {
-                x,
-                y: y1,
-                w: btn_w,
-                h: btn_h,
-                label: "Power off",
-                color: BTN_POWER_OFF,
-            },
-            Button {
-                x,
-                y: y2,
-                w: btn_w,
-                h: btn_h,
-                label: "Take photo",
-                color: BTN_TAKE_PHOTO,
-            },
-        ]
+        let orient_label = format!(
+            "Orientation: {}",
+            match self.settings.orientation {
+                Orientation::Landscape => "Landscape",
+                Orientation::Portrait => "Portrait",
+            }
+        );
+        let flip_v_label = format!(
+            "Flip V: {}",
+            if self.settings.flip_vertical {
+                "On"
+            } else {
+                "Off"
+            }
+        );
+        let flip_h_label = format!(
+            "Flip H: {}",
+            if self.settings.flip_horizontal {
+                "On"
+            } else {
+                "Off"
+            }
+        );
+
+        let mut y = start_y;
+        let mut items = Vec::new();
+
+        // 0: Power off
+        items.push(Button {
+            x: x_main,
+            y,
+            w: btn_w_main,
+            h: btn_h,
+            label: "Power off".to_string(),
+            color: BTN_POWER_OFF,
+        });
+        y += btn_h + gap;
+
+        // 1: Take photo
+        items.push(Button {
+            x: x_main,
+            y,
+            w: btn_w_main,
+            h: btn_h,
+            label: "Take photo".to_string(),
+            color: BTN_TAKE_PHOTO,
+        });
+        y += btn_h + gap;
+
+        // 2: Orientation toggle (camera + menu)
+        items.push(Button {
+            x: x_toggle,
+            y,
+            w: btn_w_toggle,
+            h: btn_h,
+            label: orient_label,
+            color: BTN_SETTING_ORIENT,
+        });
+        y += btn_h + gap;
+
+        // 3: Flip vertical toggle
+        items.push(Button {
+            x: x_toggle,
+            y,
+            w: btn_w_toggle,
+            h: btn_h,
+            label: flip_v_label,
+            color: BTN_SETTING_FLIP_V,
+        });
+        y += btn_h + gap;
+
+        // 4: Flip horizontal toggle
+        items.push(Button {
+            x: x_toggle,
+            y,
+            w: btn_w_toggle,
+            h: btn_h,
+            label: flip_h_label,
+            color: BTN_SETTING_FLIP_H,
+        });
+
+        items
     }
 
     fn handle_pointer(&mut self, x: f64, y: f64) {
@@ -155,7 +262,23 @@ impl<'a> App<'a> {
                 match i {
                     0 => self.powered_off = true,
                     1 => self.save_photo(),
+                    2 => {
+                        self.settings.orientation = match self.settings.orientation {
+                            Orientation::Landscape => Orientation::Portrait,
+                            Orientation::Portrait => Orientation::Landscape,
+                        };
+                    }
+                    3 => {
+                        self.settings.flip_vertical = !self.settings.flip_vertical;
+                    }
+                    4 => {
+                        self.settings.flip_horizontal = !self.settings.flip_horizontal;
+                    }
                     _ => {}
+                }
+                // Don't dismiss menu on toggle taps so user can see the change.
+                if i >= 2 {
+                    return;
                 }
                 self.menu_visible = false;
                 return;
@@ -370,19 +493,78 @@ impl<'a> ApplicationHandler for App<'a> {
         if !frame.is_empty() {
             let cam_w = self.actual_size.width as usize;
             let cam_h = self.actual_size.height as usize;
-            let copy_w = cam_w.min(win_w);
-            let copy_h = cam_h.min(win_h);
 
-            for y in 0..copy_h {
-                for x in 0..copy_w {
-                    let src = (y * cam_w + x) * 3;
-                    let dst = y * win_w + x;
-                    let r = frame[src];
-                    let g = frame[src + 1];
-                    let b = frame[src + 2];
-                    // BGRA (little-endian) — softbuffer native format.
-                    buffer[dst] =
-                        (255u32 << 24) | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
+            match self.settings.orientation {
+                Orientation::Landscape => {
+                    let copy_w = cam_w.min(win_w);
+                    let copy_h = cam_h.min(win_h);
+                    let off_x = (cam_w - copy_w) / 2;
+                    let off_y = (cam_h - copy_h) / 2;
+
+                    for y in 0..copy_h {
+                        for x in 0..copy_w {
+                            let src_x = if self.settings.flip_horizontal {
+                                off_x + (copy_w - 1 - x)
+                            } else {
+                                off_x + x
+                            };
+                            let src_y = if self.settings.flip_vertical {
+                                off_y + (copy_h - 1 - y)
+                            } else {
+                                off_y + y
+                            };
+                            let src = (src_y * cam_w + src_x) * 3;
+                            let dst = y * win_w + x;
+                            let r = frame[src];
+                            let g = frame[src + 1];
+                            let b = frame[src + 2];
+                            // BGRA (little-endian) — softbuffer native format.
+                            buffer[dst] = (255u32 << 24)
+                                | ((r as u32) << 16)
+                                | ((g as u32) << 8)
+                                | (b as u32);
+                        }
+                    }
+                }
+                Orientation::Portrait => {
+                    // 90° clockwise rotation, then apply screen-space flips.
+                    // Center-crop the rotated image to keep the same subject visible.
+                    let out_w = cam_h;
+                    let out_h = cam_w;
+                    let copy_w = out_w.min(win_w);
+                    let copy_h = out_h.min(win_h);
+                    let off_x = (out_w - copy_w) / 2;
+                    let off_y = (out_h - copy_h) / 2;
+
+                    for y in 0..copy_h {
+                        for x in 0..copy_w {
+                            // Position within the full rotated image space.
+                            let (src_x, src_y) =
+                                if self.settings.flip_horizontal && self.settings.flip_vertical {
+                                    // Both flips after 90° CW
+                                    (cam_w - 1 - off_y - y, off_x + x)
+                                } else if self.settings.flip_horizontal {
+                                    // Horizontal flip only after 90° CW
+                                    (off_y + y, off_x + x)
+                                } else if self.settings.flip_vertical {
+                                    // Vertical flip only after 90° CW
+                                    (cam_w - 1 - off_y - y, cam_h - 1 - off_x - x)
+                                } else {
+                                    // Base 90° CW rotation
+                                    (off_y + y, cam_h - 1 - off_x - x)
+                                };
+                            let src = (src_y * cam_w + src_x) * 3;
+                            let dst = y * win_w + x;
+                            let r = frame[src];
+                            let g = frame[src + 1];
+                            let b = frame[src + 2];
+                            // BGRA (little-endian) — softbuffer native format.
+                            buffer[dst] = (255u32 << 24)
+                                | ((r as u32) << 16)
+                                | ((g as u32) << 8)
+                                | (b as u32);
+                        }
+                    }
                 }
             }
         }
@@ -393,7 +575,7 @@ impl<'a> ApplicationHandler for App<'a> {
 
         if let Some(buttons) = buttons {
             draw_rect(&mut buffer, win_w, win_h, 0.0, 0.0, win_wf, win_hf, MENU_BG);
-            for btn in buttons {
+            for (i, btn) in buttons.iter().enumerate() {
                 draw_rect(
                     &mut buffer,
                     win_w,
@@ -422,16 +604,58 @@ impl<'a> ApplicationHandler for App<'a> {
                 let text_h = 7 * scale;
                 let tx = btn.x + (btn.w - text_w as f64) / 2.0;
                 let ty = btn.y + (btn.h - text_h as f64) / 2.0;
-                draw_text(
-                    &mut buffer,
-                    win_w,
-                    win_h,
-                    btn.label,
-                    tx as i32,
-                    ty as i32,
-                    scale,
-                    TEXT_COLOR,
-                );
+
+                // For toggle items (indices 2-4), draw the value part in highlight color.
+                if i >= 2 {
+                    // Find the colon separator to split label and value.
+                    if let Some(col) = btn.label.find(':') {
+                        let left = &btn.label[..=col]; // e.g. "Camera:"
+                        let right = &btn.label[col + 2..]; // e.g. "Portrait"
+                        let left_w = left.chars().count() as u32 * (5 + 1) * scale;
+                        draw_text(
+                            &mut buffer,
+                            win_w,
+                            win_h,
+                            left,
+                            tx as i32,
+                            ty as i32,
+                            scale,
+                            TEXT_COLOR,
+                        );
+                        draw_text(
+                            &mut buffer,
+                            win_w,
+                            win_h,
+                            right,
+                            (tx + left_w as f64) as i32,
+                            ty as i32,
+                            scale,
+                            TEXT_HIGHLIGHT,
+                        );
+                    } else {
+                        draw_text(
+                            &mut buffer,
+                            win_w,
+                            win_h,
+                            &btn.label,
+                            tx as i32,
+                            ty as i32,
+                            scale,
+                            TEXT_COLOR,
+                        );
+                    }
+                } else {
+                    draw_text(
+                        &mut buffer,
+                        win_w,
+                        win_h,
+                        &btn.label,
+                        tx as i32,
+                        ty as i32,
+                        scale,
+                        TEXT_COLOR,
+                    );
+                }
             }
         }
 
@@ -633,6 +857,11 @@ fn font_bitmap(ch: char) -> Option<[u8; 7]> {
         ':' => [0x00, 0x00, 0x04, 0x00, 0x04, 0x00, 0x00],
         '-' => [0x00, 0x00, 0x00, 0x1F, 0x00, 0x00, 0x00],
         '_' => [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1F],
+        '.' => [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04],
+        ',' => [0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x08],
+        '<' => [0x00, 0x02, 0x04, 0x08, 0x04, 0x02, 0x00],
+        '>' => [0x00, 0x08, 0x04, 0x02, 0x04, 0x08, 0x00],
+        '/' => [0x00, 0x01, 0x02, 0x04, 0x08, 0x10, 0x00],
         ' ' => [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
         _ => return None,
     })
@@ -759,6 +988,15 @@ fn main() {
         Err(e) => eprintln!("Warning: Failed to initialize GPIO: {e}"),
     }
 
+    let settings = Settings {
+        orientation: match config.orientation.as_str() {
+            "portrait" => Orientation::Portrait,
+            _ => Orientation::Landscape,
+        },
+        flip_vertical: config.flip_vertical,
+        flip_horizontal: config.flip_horizontal,
+    };
+
     let event_loop = EventLoop::new().expect(
         "Failed to create event loop — is WAYLAND_DISPLAY or DISPLAY set?\n\
          Run 'echo $WAYLAND_DISPLAY $DISPLAY' to check.",
@@ -774,6 +1012,7 @@ fn main() {
         context: None,
         surface: None,
         config,
+        settings,
         menu_visible: false,
         powered_off: false,
         last_activity: Instant::now(),
