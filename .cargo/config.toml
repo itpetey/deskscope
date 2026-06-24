@@ -1,0 +1,10 @@
+# Cross-compilation clang/bindgen flags for aarch64 are provided inside the cross
+# container by Dockerfile.cross (BINDGEN_EXTRA_CLANG_ARGS_aarch64_unknown_linux_gnu),
+# which bindgen reads in preference to the generic variable.
+
+[target.aarch64-unknown-linux-gnu]
+# libcamera.so pulls in many transitive deps (libudev, libpisp, gnutls, GL, lttng,
+# elfutils, ...) that are NOT in the cross sysroot but ARE present on Raspberry Pi OS
+# at runtime. Tell the linker to ignore undefined symbols that originate from shared
+# libraries so we don't have to vendor every transitive dependency just to link.
+rustflags = ["-C", "link-arg=-Wl,--unresolved-symbols=ignore-in-shared-libs"]

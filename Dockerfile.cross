@@ -1,0 +1,47 @@
+FROM ghcr.io/cross-rs/aarch64-unknown-linux-gnu:main
+
+# Install libcamera 0.7.1 (arm64) dev + runtime from Debian so that libcamera-sys
+# can find headers (for bindgen) and the shared library (for linking).
+#
+# These are foreign-architecture (arm64) packages, so we extract them in place with
+# `dpkg-deb -x` instead of `dpkg -i` (no dependency resolution / maintainer scripts).
+# Headers land in /usr/include/libcamera and the library in
+# /usr/lib/aarch64-linux-gnu, matching the paths in libcamera.pc.
+RUN apt-get update && apt-get install -y --no-install-recommends wget ca-certificates && \
+    mkdir -p /tmp/libcamera-deps && cd /tmp/libcamera-deps && \
+    wget -q \
+      "http://ftp.debian.org/debian/pool/main/libc/libcamera/libcamera-dev_0.7.1-1_arm64.deb" \
+      "http://ftp.debian.org/debian/pool/main/libc/libcamera/libcamera0.7_0.7.1-1_arm64.deb" && \
+    for deb in *.deb; do dpkg-deb -x "$deb" /; done && \
+    PC_FILE="/usr/lib/aarch64-linux-gnu/pkgconfig/libcamera.pc" && \
+    if [ -f "$PC_FILE" ]; then \
+      sed -i 's|^prefix=.*|prefix=/usr|' "$PC_FILE"; \
+    else \
+      echo "ERROR: libcamera.pc not found!"; exit 1; \
+    fi && \
+    cd / && rm -rf /tmp/libcamera-deps && \
+    apt-get purge -y wget && apt-get autoremove -y && \
+    rm -rf /var/lib/apt/lists/*
+
+# The base image already sets PKG_CONFIG_ALLOW_CROSS=1 and a target PKG_CONFIG_PATH,
+# but we re-assert the libcamera pkgconfig dir so build.rs can resolve `libcamera`.
+ENV PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig:$PKG_CONFIG_PATH
+
+# libclang/bindgen finds the base libstdc++ headers (include/c++/<ver>) but not the
+# multiarch ones (include/c++/<ver>/aarch64-linux-gnu) that hold bits/c++config.h.
+# Expose a version-stable `current` symlink so we can add those include paths without
+# hard-coding the GCC version (which may change with the base image).
+RUN GCCVER=$(ls /usr/aarch64-linux-gnu/include/c++/ | head -1) && \
+    ln -sfT "$GCCVER" /usr/aarch64-linux-gnu/include/c++/current && \
+    test -f "/usr/aarch64-linux-gnu/include/c++/current/aarch64-linux-gnu/bits/c++config.h"
+
+# bindgen reads the TARGET-specific BINDGEN_EXTRA_CLANG_ARGS_<target> in preference to
+# the generic one, so we must extend *this* variable (the base image sets it without the
+# C++ multiarch include dirs). Without these -I paths libclang fails to find
+# bits/c++config.h when parsing libcamera's C++ headers.
+ENV BINDGEN_EXTRA_CLANG_ARGS_aarch64_unknown_linux_gnu="--sysroot=/usr/aarch64-linux-gnu -idirafter/usr/include -I/usr/aarch64-linux-gnu/include/c++/current -I/usr/aarch64-linux-gnu/include/c++/current/aarch64-linux-gnu"
+
+# Note: the base image already provides a correct
+# BINDGEN_EXTRA_CLANG_ARGS_aarch64_unknown_linux_gnu
+# (--sysroot=/usr/aarch64-linux-gnu -idirafter/usr/include), and the aarch64 C++
+# headers live inside that sysroot, so no header symlinking is required here.

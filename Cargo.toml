@@ -1,0 +1,10 @@
+[package]
+name = "deskscope"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+drm-fourcc = "2.2.0"
+libcamera = { version = "0.7", features = ["vendor_rpi"] }
+softbuffer = "0.4"
+winit = "0.30"
