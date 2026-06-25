@@ -60,6 +60,7 @@ export component DeskscopeWindow inherits Window {
     in property <bool> menu-visible: false;
     in property <bool> powered-off: false;
     in property <string> status-text: "";
+    in property <string> orientation: "Landscape";
     in property <string> orient-value: "Landscape";
     in property <string> flip-v-value: "Off";
     in property <string> flip-h-value: "Off";
@@ -114,6 +115,72 @@ export component DeskscopeWindow inherits Window {
         }
 
         VerticalLayout {
+            visible: root.orientation == "Portrait";
+            width: root.width * 90%;
+            height: root.height * 50%;
+            alignment: center;
+            spacing: root.height * 2%;
+
+            HorizontalLayout {
+                spacing: root.width * 2%;
+                alignment: center;
+
+                ActionButton {
+                    text: "Power off";
+                    bg: #CC3333;
+                    button-font-size: root.menu-font-size * 0.7;
+                    height: 100%;
+                    width: 28%;
+                    clicked => { root.power-off(); }
+                }
+                ActionButton {
+                    text: "Take photo";
+                    bg: #33CC33;
+                    button-font-size: root.menu-font-size * 0.7;
+                    height: 100%;
+                    width: 28%;
+                    clicked => { root.take-photo(); }
+                }
+                ToggleButton {
+                    label: "Orientation";
+                    value: root.orient-value;
+                    button-font-size: root.menu-font-size * 0.7;
+                    height: 100%;
+                    width: 28%;
+                    clicked => { root.toggle-orientation(); }
+                }
+            }
+
+            HorizontalLayout {
+                spacing: root.width * 2%;
+                alignment: center;
+
+                ToggleButton {
+                    label: "Flip V";
+                    value: root.flip-v-value;
+                    button-font-size: root.menu-font-size * 0.7;
+                    height: 100%;
+                    width: 28%;
+                    clicked => { root.toggle-flip-v(); }
+                }
+                ToggleButton {
+                    label: "Flip H";
+                    value: root.flip-h-value;
+                    button-font-size: root.menu-font-size * 0.7;
+                    height: 100%;
+                    width: 28%;
+                    clicked => { root.toggle-flip-h(); }
+                }
+                Rectangle {
+                    width: 28%;
+                    height: 100%;
+                    background: transparent;
+                }
+            }
+        }
+
+        VerticalLayout {
+            visible: root.orientation != "Portrait";
             width: root.width * 80%;
             height: root.height * 70%;
             alignment: center;

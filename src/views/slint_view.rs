@@ -1,16 +1,14 @@
 use std::sync::{Arc, Mutex};
 
 use libcamera::geometry::Size;
-
 use slint::ComponentHandle;
+use ui::DeskscopeWindow;
 
 use crate::views::{Orientation, Settings, View};
 
 mod ui {
     slint::include_modules!();
 }
-
-use ui::DeskscopeWindow;
 
 pub struct SlintView {
     window: DeskscopeWindow,
@@ -82,16 +80,6 @@ impl SlintView {
     }
 }
 
-fn invoke<F>(callbacks: &Arc<Mutex<Callbacks>>, selector: F)
-where
-    F: FnOnce(&Callbacks) -> Option<&Box<dyn Fn() + Send + Sync>>,
-{
-    let guard = callbacks.lock().unwrap();
-    if let Some(cb) = selector(&guard) {
-        cb();
-    }
-}
-
 impl View for SlintView {
     fn update_frame(&self, frame: &[u8], actual_size: Size) {
         let settings = self.settings.lock().unwrap().clone();
@@ -133,6 +121,10 @@ impl View for SlintView {
 
     fn set_settings(&self, settings: &Settings) {
         *self.settings.lock().unwrap() = settings.clone();
+        self.window.set_orientation(match settings.orientation {
+            Orientation::Landscape => "Landscape".into(),
+            Orientation::Portrait => "Portrait".into(),
+        });
         self.window.set_orient_value(match settings.orientation {
             Orientation::Landscape => "Landscape".into(),
             Orientation::Portrait => "Portrait".into(),
@@ -194,6 +186,16 @@ fn fill_with_black(rgba: &mut [u8]) {
         chunk[1] = 0;
         chunk[2] = 0;
         chunk[3] = 255;
+    }
+}
+
+fn invoke<F>(callbacks: &Arc<Mutex<Callbacks>>, selector: F)
+where
+    F: FnOnce(&Callbacks) -> Option<&Box<dyn Fn() + Send + Sync>>,
+{
+    let guard = callbacks.lock().unwrap();
+    if let Some(cb) = selector(&guard) {
+        cb();
     }
 }
 

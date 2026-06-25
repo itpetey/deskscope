@@ -1,19 +1,6 @@
 use libcamera::geometry::Size;
 
-/// Camera/menu orientation.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Orientation {
-    Landscape,
-    Portrait,
-}
-
-/// Display settings controlled through the UI.
-#[derive(Debug, Clone)]
-pub struct Settings {
-    pub orientation: Orientation,
-    pub flip_vertical: bool,
-    pub flip_horizontal: bool,
-}
+pub mod slint_view;
 
 /// Abstract interface for the deskscope user-interface.
 ///
@@ -50,4 +37,17 @@ pub trait View {
     fn on_toggle_flip_h(&self, callback: Box<dyn Fn() + Send + Sync>);
 }
 
-pub mod slint_view;
+/// Camera/menu orientation.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Orientation {
+    Landscape,
+    Portrait,
+}
+
+/// Display settings controlled through the UI.
+#[derive(Debug, Clone)]
+pub struct Settings {
+    pub orientation: Orientation,
+    pub flip_vertical: bool,
+    pub flip_horizontal: bool,
+}

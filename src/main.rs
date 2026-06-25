@@ -21,10 +21,9 @@ use libcamera::{
     stream::StreamRole,
 };
 use serde::Deserialize;
+use views::{Orientation, Settings, View, slint_view::SlintView};
 
 mod views;
-use views::slint_view::SlintView;
-use views::{Orientation, Settings, View};
 
 const PIXEL_FORMAT_RGB888: PixelFormat = PixelFormat::new(DrmFourcc::Rgb888 as u32, 0);
 
@@ -60,26 +59,6 @@ struct Config {
     /// Defaults to false.
     #[serde(default)]
     flip_horizontal: bool,
-}
-
-fn default_orientation() -> String {
-    "landscape".to_string()
-}
-
-fn load_config() -> Config {
-    let args = Args::parse();
-
-    if !args.config.exists() {
-        panic!(
-            "Config file not found: {}\n  Create it or omit --config to use defaults.",
-            args.config.display()
-        );
-    }
-
-    let contents = std::fs::read_to_string(&args.config)
-        .unwrap_or_else(|e| panic!("Failed to read config file {}: {e}", args.config.display()));
-    toml::from_str(&contents)
-        .unwrap_or_else(|e| panic!("Failed to parse config file {}: {e}", args.config.display()))
 }
 
 /// Messages sent from the concrete view back to the application logic.
@@ -472,4 +451,24 @@ fn main() {
     );
 
     view.run().expect("event loop failed");
+}
+
+fn default_orientation() -> String {
+    "landscape".to_string()
+}
+
+fn load_config() -> Config {
+    let args = Args::parse();
+
+    if !args.config.exists() {
+        panic!(
+            "Config file not found: {}\n  Create it or omit --config to use defaults.",
+            args.config.display()
+        );
+    }
+
+    let contents = std::fs::read_to_string(&args.config)
+        .unwrap_or_else(|e| panic!("Failed to read config file {}: {e}", args.config.display()));
+    toml::from_str(&contents)
+        .unwrap_or_else(|e| panic!("Failed to parse config file {}: {e}", args.config.display()))
 }
