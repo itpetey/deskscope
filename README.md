@@ -31,6 +31,15 @@ Name=Deskscope
 Exec=/usr/local/bin/run-deskscope
 Terminal=false
 EOF
+
+# Rotate screen
+cat > ~/.config/autostart/rotate.desktop <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Rotate
+Exec=/usr/bin/wlr-randr --output HDMI-A-1 --transform 270
+Terminal=true
+EOF
 ```
 
 ### Running manually (e.g. over SSH)

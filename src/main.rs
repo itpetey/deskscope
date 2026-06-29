@@ -21,7 +21,7 @@ use libcamera::{
     stream::StreamRole,
 };
 use serde::Deserialize;
-use views::{Orientation, Settings, View, slint_view::SlintView};
+use views::{Settings, View, slint_view::SlintView};
 
 mod views;
 
@@ -44,21 +44,6 @@ struct Config {
     /// Set to 0 or omit to disable auto power-off.
     #[serde(default)]
     power_off_after_secs: u64,
-
-    /// Image and menu orientation: "landscape" or "portrait".
-    /// Defaults to "landscape".
-    #[serde(default = "default_orientation")]
-    orientation: String,
-
-    /// Whether to vertically flip the camera image.
-    /// Defaults to false.
-    #[serde(default)]
-    flip_vertical: bool,
-
-    /// Whether to horizontally flip the camera image.
-    /// Defaults to false.
-    #[serde(default)]
-    flip_horizontal: bool,
 }
 
 /// Messages sent from the concrete view back to the application logic.
@@ -68,9 +53,6 @@ enum UiCommand {
     Wake,
     PowerOff,
     TakePhoto,
-    ToggleOrientation,
-    ToggleFlipV,
-    ToggleFlipH,
 }
 
 /// Holds the runtime state that drives the view.
@@ -114,22 +96,13 @@ impl<'a> AppState<'a> {
         self.menu_visible = false;
     }
 
-    fn toggle_orientation(&mut self) {
-        self.settings.orientation = match self.settings.orientation {
-            Orientation::Landscape => Orientation::Portrait,
-            Orientation::Portrait => Orientation::Landscape,
-        };
-    }
-
     fn show_status(&mut self, msg: String) {
         self.status_msg = Some(msg);
         self.status_until = Some(Instant::now() + Duration::from_secs(2));
     }
 
     fn save_photo(&mut self) {
-        let width = self.actual_size.width;
-        let height = self.actual_size.height;
-        let expected = (width as usize) * (height as usize) * 3;
+        let expected = (self.actual_size.width as usize) * (self.actual_size.height as usize) * 3;
 
         let frame_data = {
             let frame = self.latest_frame.lock().unwrap();
@@ -147,7 +120,11 @@ impl<'a> AppState<'a> {
             frame[..expected].to_vec()
         };
 
-        let img = match image::RgbImage::from_raw(width, height, frame_data) {
+        let img = match image::RgbImage::from_raw(
+            self.actual_size.width as u32,
+            self.actual_size.height as u32,
+            frame_data,
+        ) {
             Some(img) => img,
             None => {
                 self.show_status("Failed to build image".to_string());
@@ -187,13 +164,6 @@ impl<'a> AppState<'a> {
                 UiCommand::Wake => self.wake(),
                 UiCommand::PowerOff => self.power_off(),
                 UiCommand::TakePhoto => self.save_photo(),
-                UiCommand::ToggleOrientation => self.toggle_orientation(),
-                UiCommand::ToggleFlipV => {
-                    self.settings.flip_vertical = !self.settings.flip_vertical
-                }
-                UiCommand::ToggleFlipH => {
-                    self.settings.flip_horizontal = !self.settings.flip_horizontal;
-                }
             }
         }
 
@@ -362,14 +332,7 @@ fn main() {
         Err(e) => eprintln!("Warning: Failed to initialize GPIO: {e}"),
     }
 
-    let settings = Settings {
-        orientation: match config.orientation.as_str() {
-            "portrait" => Orientation::Portrait,
-            _ => Orientation::Landscape,
-        },
-        flip_vertical: config.flip_vertical,
-        flip_horizontal: config.flip_horizontal,
-    };
+    let settings = Settings;
 
     // Create the view and wire up its user-input callbacks.
     let view: Rc<dyn View> = Rc::new(SlintView::new());
@@ -405,24 +368,6 @@ fn main() {
             cmd_tx.send(UiCommand::TakePhoto).ok();
         }
     }));
-    view.on_toggle_orientation(Box::new({
-        let cmd_tx = cmd_tx.clone();
-        move || {
-            cmd_tx.send(UiCommand::ToggleOrientation).ok();
-        }
-    }));
-    view.on_toggle_flip_v(Box::new({
-        let cmd_tx = cmd_tx.clone();
-        move || {
-            cmd_tx.send(UiCommand::ToggleFlipV).ok();
-        }
-    }));
-    view.on_toggle_flip_h(Box::new({
-        let cmd_tx = cmd_tx.clone();
-        move || {
-            cmd_tx.send(UiCommand::ToggleFlipH).ok();
-        }
-    }));
 
     let app = RefCell::new(AppState {
         cam,
@@ -451,10 +396,6 @@ fn main() {
     );
 
     view.run().expect("event loop failed");
-}
-
-fn default_orientation() -> String {
-    "landscape".to_string()
 }
 
 fn load_config() -> Config {

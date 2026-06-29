@@ -10,14 +10,3 @@ photo_directory = "/home/pi/photos"
 # Set to 0 or omit to disable auto power-off.
 # power_off_after_secs = 300
 
-# Image and menu orientation: "landscape" or "portrait".
-# Defaults to "landscape".
-# orientation = "landscape"
-
-# Whether to vertically flip the camera image.
-# Defaults to false.
-# flip_vertical = false
-
-# Whether to horizontally flip the camera image.
-# Defaults to false.
-# flip_horizontal = false

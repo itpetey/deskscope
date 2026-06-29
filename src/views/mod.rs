@@ -32,22 +32,8 @@ pub trait View {
     fn on_wake(&self, callback: Box<dyn Fn() + Send + Sync>);
     fn on_power_off(&self, callback: Box<dyn Fn() + Send + Sync>);
     fn on_take_photo(&self, callback: Box<dyn Fn() + Send + Sync>);
-    fn on_toggle_orientation(&self, callback: Box<dyn Fn() + Send + Sync>);
-    fn on_toggle_flip_v(&self, callback: Box<dyn Fn() + Send + Sync>);
-    fn on_toggle_flip_h(&self, callback: Box<dyn Fn() + Send + Sync>);
-}
-
-/// Camera/menu orientation.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Orientation {
-    Landscape,
-    Portrait,
 }
 
 /// Display settings controlled through the UI.
 #[derive(Debug, Clone)]
-pub struct Settings {
-    pub orientation: Orientation,
-    pub flip_vertical: bool,
-    pub flip_horizontal: bool,
-}
+pub struct Settings;

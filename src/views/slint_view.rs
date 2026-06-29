@@ -4,7 +4,7 @@ use libcamera::geometry::Size;
 use slint::ComponentHandle;
 use ui::DeskscopeWindow;
 
-use crate::views::{Orientation, Settings, View};
+use crate::views::{Settings, View};
 
 mod ui {
     slint::include_modules!();
@@ -22,20 +22,13 @@ struct Callbacks {
     wake: Option<Box<dyn Fn() + Send + Sync>>,
     power_off: Option<Box<dyn Fn() + Send + Sync>>,
     take_photo: Option<Box<dyn Fn() + Send + Sync>>,
-    toggle_orientation: Option<Box<dyn Fn() + Send + Sync>>,
-    toggle_flip_v: Option<Box<dyn Fn() + Send + Sync>>,
-    toggle_flip_h: Option<Box<dyn Fn() + Send + Sync>>,
 }
 
 impl SlintView {
     pub fn new() -> Self {
         let window = DeskscopeWindow::new().expect("failed to create Slint window");
 
-        let settings = Arc::new(Mutex::new(Settings {
-            orientation: Orientation::Landscape,
-            flip_vertical: false,
-            flip_horizontal: false,
-        }));
+        let settings = Arc::new(Mutex::new(Settings));
 
         let callbacks = Arc::new(Mutex::new(Callbacks {
             show_menu: None,
@@ -43,9 +36,6 @@ impl SlintView {
             wake: None,
             power_off: None,
             take_photo: None,
-            toggle_orientation: None,
-            toggle_flip_v: None,
-            toggle_flip_h: None,
         }));
 
         let cbs = callbacks.clone();
@@ -63,15 +53,6 @@ impl SlintView {
         let cbs = callbacks.clone();
         window.on_take_photo(move || invoke(&cbs, |c| c.take_photo.as_ref()));
 
-        let cbs = callbacks.clone();
-        window.on_toggle_orientation(move || invoke(&cbs, |c| c.toggle_orientation.as_ref()));
-
-        let cbs = callbacks.clone();
-        window.on_toggle_flip_v(move || invoke(&cbs, |c| c.toggle_flip_v.as_ref()));
-
-        let cbs = callbacks.clone();
-        window.on_toggle_flip_h(move || invoke(&cbs, |c| c.toggle_flip_h.as_ref()));
-
         Self {
             window,
             settings,
@@ -82,8 +63,6 @@ impl SlintView {
 
 impl View for SlintView {
     fn update_frame(&self, frame: &[u8], actual_size: Size) {
-        let settings = self.settings.lock().unwrap().clone();
-
         let size = self.window.window().size();
         let win_w = size.width as usize;
         let win_h = size.height as usize;
@@ -95,7 +74,7 @@ impl View for SlintView {
         fill_with_black(&mut rgba);
 
         if !frame.is_empty() {
-            render_frame(frame, actual_size, &settings, win_w, win_h, &mut rgba);
+            render_frame(frame, actual_size, win_w, win_h, &mut rgba);
         }
 
         let pixel_buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
@@ -121,24 +100,6 @@ impl View for SlintView {
 
     fn set_settings(&self, settings: &Settings) {
         *self.settings.lock().unwrap() = settings.clone();
-        self.window.set_orientation(match settings.orientation {
-            Orientation::Landscape => "Landscape".into(),
-            Orientation::Portrait => "Portrait".into(),
-        });
-        self.window.set_orient_value(match settings.orientation {
-            Orientation::Landscape => "Landscape".into(),
-            Orientation::Portrait => "Portrait".into(),
-        });
-        self.window.set_flip_v_value(if settings.flip_vertical {
-            "On".into()
-        } else {
-            "Off".into()
-        });
-        self.window.set_flip_h_value(if settings.flip_horizontal {
-            "On".into()
-        } else {
-            "Off".into()
-        });
     }
 
     fn run(&self) -> Result<(), Box<dyn std::error::Error>> {
@@ -166,18 +127,6 @@ impl View for SlintView {
     fn on_take_photo(&self, callback: Box<dyn Fn() + Send + Sync>) {
         self.callbacks.lock().unwrap().take_photo = Some(callback);
     }
-
-    fn on_toggle_orientation(&self, callback: Box<dyn Fn() + Send + Sync>) {
-        self.callbacks.lock().unwrap().toggle_orientation = Some(callback);
-    }
-
-    fn on_toggle_flip_v(&self, callback: Box<dyn Fn() + Send + Sync>) {
-        self.callbacks.lock().unwrap().toggle_flip_v = Some(callback);
-    }
-
-    fn on_toggle_flip_h(&self, callback: Box<dyn Fn() + Send + Sync>) {
-        self.callbacks.lock().unwrap().toggle_flip_h = Some(callback);
-    }
 }
 
 fn fill_with_black(rgba: &mut [u8]) {
@@ -199,14 +148,7 @@ where
     }
 }
 
-fn render_frame(
-    frame: &[u8],
-    actual_size: Size,
-    settings: &Settings,
-    win_w: usize,
-    win_h: usize,
-    rgba: &mut [u8],
-) {
+fn render_frame(frame: &[u8], actual_size: Size, win_w: usize, win_h: usize, rgba: &mut [u8]) {
     let cam_w = actual_size.width as usize;
     let cam_h = actual_size.height as usize;
 
@@ -214,102 +156,39 @@ fn render_frame(
         return;
     }
 
-    match settings.orientation {
-        Orientation::Landscape => {
-            let scale_x = win_w as f32 / cam_w as f32;
-            let scale_y = win_h as f32 / cam_h as f32;
-            // "Contain" fit: show the whole camera frame, letterboxed if necessary.
-            let scale = scale_x.min(scale_y);
+    let virt_w = cam_w as f32;
+    let virt_h = cam_h as f32;
+    let scale_x = win_w as f32 / virt_w;
+    let scale_y = win_h as f32 / virt_h;
+    let scale = scale_x.min(scale_y);
 
-            let scaled_w = (cam_w as f32 * scale) as usize;
-            let scaled_h = (cam_h as f32 * scale) as usize;
-            let dst_off_x = (win_w - scaled_w) / 2;
-            let dst_off_y = (win_h - scaled_h) / 2;
+    let scaled_w = (virt_w * scale) as usize;
+    let scaled_h = (virt_h * scale) as usize;
+    let dst_off_x = (win_w - scaled_w) / 2;
+    let dst_off_y = (win_h - scaled_h) / 2;
 
-            if scaled_w == 0 || scaled_h == 0 {
-                return;
-            }
+    if scaled_w == 0 || scaled_h == 0 {
+        return;
+    }
 
-            for dy in 0..scaled_h {
-                let sy = dy as f32 / scale;
-                let src_y = if settings.flip_vertical {
-                    (cam_h - 1) as f32 - sy
-                } else {
-                    sy
-                } as usize;
-                if src_y >= cam_h {
-                    continue;
-                }
-
-                for dx in 0..scaled_w {
-                    let sx = dx as f32 / scale;
-                    let src_x = if settings.flip_horizontal {
-                        (cam_w - 1) as f32 - sx
-                    } else {
-                        sx
-                    } as usize;
-                    if src_x >= cam_w {
-                        continue;
-                    }
-
-                    let src = (src_y * cam_w + src_x) * 3;
-                    let dst = ((dst_off_y + dy) * win_w + (dst_off_x + dx)) * 4;
-                    rgba[dst] = frame[src];
-                    rgba[dst + 1] = frame[src + 1];
-                    rgba[dst + 2] = frame[src + 2];
-                    rgba[dst + 3] = 255;
-                }
-            }
+    for dy in 0..scaled_h {
+        let vy = (dy as f32 / scale) as usize;
+        if vy >= cam_h {
+            continue;
         }
-        Orientation::Portrait => {
-            let virt_w = cam_h as f32;
-            let virt_h = cam_w as f32;
-            let scale_x = win_w as f32 / virt_w;
-            let scale_y = win_h as f32 / virt_h;
-            let scale = scale_x.min(scale_y);
 
-            let scaled_w = (virt_w * scale) as usize;
-            let scaled_h = (virt_h * scale) as usize;
-            let dst_off_x = (win_w - scaled_w) / 2;
-            let dst_off_y = (win_h - scaled_h) / 2;
-
-            if scaled_w == 0 || scaled_h == 0 {
-                return;
+        for dx in 0..scaled_w {
+            let vx = (dx as f32 / scale) as usize;
+            if vx >= cam_w {
+                continue;
             }
 
-            for dy in 0..scaled_h {
-                let vy = (dy as f32 / scale) as usize;
-                if vy >= cam_w {
-                    continue;
-                }
-
-                for dx in 0..scaled_w {
-                    let vx = (dx as f32 / scale) as usize;
-                    if vx >= cam_h {
-                        continue;
-                    }
-
-                    let (src_x, src_y) = if settings.flip_horizontal && settings.flip_vertical {
-                        (cam_w - 1 - vy, vx)
-                    } else if settings.flip_horizontal {
-                        (vy, vx)
-                    } else if settings.flip_vertical {
-                        (cam_w - 1 - vy, cam_h - 1 - vx)
-                    } else {
-                        (vy, cam_h - 1 - vx)
-                    };
-                    if src_x >= cam_w || src_y >= cam_h {
-                        continue;
-                    }
-
-                    let src = (src_y * cam_w + src_x) * 3;
-                    let dst = ((dst_off_y + dy) * win_w + (dst_off_x + dx)) * 4;
-                    rgba[dst] = frame[src];
-                    rgba[dst + 1] = frame[src + 1];
-                    rgba[dst + 2] = frame[src + 2];
-                    rgba[dst + 3] = 255;
-                }
-            }
+            let src = (vy * cam_w + vx) * 3;
+            let dst = ((dst_off_y + dy) * win_w + (dst_off_x + dx)) * 4;
+            rgba[dst] = frame[src];
+            rgba[dst + 1] = frame[src + 1];
+            rgba[dst + 2] = frame[src + 2];
+            rgba[dst + 3] = 255;
         }
     }
 }

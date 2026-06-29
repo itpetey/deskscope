@@ -1,57 +1,47 @@
-component ActionButton inherits Rectangle {
+component MenuButton inherits Rectangle {
     in property <string> text;
+    in property <string> sub-text;
     in property <brush> bg;
-    in property <length> button-font-size;
+    in property <length> button-size;
     callback clicked();
 
-    height: 12%;
+    width: button-size;
+    height: button-size;
     background: bg;
+    border-radius: button-size * 12%;
     border-width: 4px;
     border-color: white;
 
     Text {
         text: root.text;
         color: white;
-        font-size: root.button-font-size;
+        font-size: root.button-size * 16%;
         font-weight: 600;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        x: 0px;
+        y: 0px;
+        width: 100%;
+        height: 100%;
+    }
+
+    if root.sub-text != "": Text {
+        text: root.sub-text;
+        color: #33CCFF;
+        font-size: root.button-size * 14%;
+        font-weight: 700;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        x: 0px;
+        y: 0px;
+        width: 100%;
+        height: 100%;
     }
 
     TouchArea {
-        clicked => { root.clicked(); }
-    }
-}
-
-component ToggleButton inherits Rectangle {
-    in property <string> label;
-    in property <string> value;
-    in property <length> button-font-size;
-    callback clicked();
-
-    height: 12%;
-    background: #444488;
-    border-width: 4px;
-    border-color: white;
-
-    HorizontalLayout {
-        alignment: center;
-        spacing: 10px;
-
-        Text {
-            text: root.label + ":";
-            color: white;
-            font-size: root.button-font-size;
-            font-weight: 600;
+        clicked => {
+            root.clicked();
         }
-        Text {
-            text: root.value;
-            color: #33CCFF;
-            font-size: root.button-font-size;
-            font-weight: 700;
-        }
-    }
-
-    TouchArea {
-        clicked => { root.clicked(); }
     }
 }
 
@@ -60,27 +50,16 @@ export component DeskscopeWindow inherits Window {
     in property <bool> menu-visible: false;
     in property <bool> powered-off: false;
     in property <string> status-text: "";
-    in property <string> orientation: "Landscape";
-    in property <string> orient-value: "Landscape";
-    in property <string> flip-v-value: "Off";
-    in property <string> flip-h-value: "Off";
 
     callback show-menu();
     callback dismiss-menu();
     callback wake();
     callback power-off();
     callback take-photo();
-    callback toggle-orientation();
-    callback toggle-flip-v();
-    callback toggle-flip-h();
 
     title: "Deskscope";
     background: black;
     full-screen: true;
-
-    // Derived from the window size so button text scales without creating
-    // a binding loop inside the reusable button components.
-    property <length> menu-font-size: self.height * 6%;
 
     // Camera feed fills the window.
     Image {
@@ -109,112 +88,39 @@ export component DeskscopeWindow inherits Window {
         height: root.height;
         background: #CC000000;
 
-        // Tap outside the button column dismisses the menu.
+        // Tap outside the button grid dismisses the menu.
         TouchArea {
-            clicked => { root.dismiss-menu(); }
-        }
-
-        VerticalLayout {
-            visible: root.orientation == "Portrait";
-            width: root.width * 90%;
-            height: root.height * 50%;
-            alignment: center;
-            spacing: root.height * 2%;
-
-            HorizontalLayout {
-                spacing: root.width * 2%;
-                alignment: center;
-
-                ActionButton {
-                    text: "Power off";
-                    bg: #CC3333;
-                    button-font-size: root.menu-font-size * 0.7;
-                    height: 100%;
-                    width: 28%;
-                    clicked => { root.power-off(); }
-                }
-                ActionButton {
-                    text: "Take photo";
-                    bg: #33CC33;
-                    button-font-size: root.menu-font-size * 0.7;
-                    height: 100%;
-                    width: 28%;
-                    clicked => { root.take-photo(); }
-                }
-                ToggleButton {
-                    label: "Orientation";
-                    value: root.orient-value;
-                    button-font-size: root.menu-font-size * 0.7;
-                    height: 100%;
-                    width: 28%;
-                    clicked => { root.toggle-orientation(); }
-                }
-            }
-
-            HorizontalLayout {
-                spacing: root.width * 2%;
-                alignment: center;
-
-                ToggleButton {
-                    label: "Flip V";
-                    value: root.flip-v-value;
-                    button-font-size: root.menu-font-size * 0.7;
-                    height: 100%;
-                    width: 28%;
-                    clicked => { root.toggle-flip-v(); }
-                }
-                ToggleButton {
-                    label: "Flip H";
-                    value: root.flip-h-value;
-                    button-font-size: root.menu-font-size * 0.7;
-                    height: 100%;
-                    width: 28%;
-                    clicked => { root.toggle-flip-h(); }
-                }
-                Rectangle {
-                    width: 28%;
-                    height: 100%;
-                    background: transparent;
-                }
+            clicked => {
+                root.dismiss-menu();
             }
         }
 
-        VerticalLayout {
-            visible: root.orientation != "Portrait";
-            width: root.width * 80%;
-            height: root.height * 70%;
-            alignment: center;
-            spacing: root.height * 2.5%;
+        property <length> cell-size: min(root.width / 2, root.height);
 
-            ActionButton {
+        GridLayout {
+            x: (root.width - self.width) / 2;
+            y: (root.height - self.height) / 2;
+
+            MenuButton {
                 text: "Power off";
                 bg: #CC3333;
-                button-font-size: root.menu-font-size;
-                clicked => { root.power-off(); }
+                button-size: cell-size;
+                row: 0;
+                col: 0;
+                clicked => {
+                    root.power-off();
+                }
             }
-            ActionButton {
+
+            MenuButton {
                 text: "Take photo";
                 bg: #33CC33;
-                button-font-size: root.menu-font-size;
-                clicked => { root.take-photo(); }
-            }
-            ToggleButton {
-                label: "Orientation";
-                value: root.orient-value;
-                button-font-size: root.menu-font-size;
-                clicked => { root.toggle-orientation(); }
-            }
-            ToggleButton {
-                label: "Flip V";
-                value: root.flip-v-value;
-                button-font-size: root.menu-font-size;
-                clicked => { root.toggle-flip-v(); }
-            }
-            ToggleButton {
-                label: "Flip H";
-                value: root.flip-h-value;
-                button-font-size: root.menu-font-size;
-                clicked => { root.toggle-flip-h(); }
+                button-size: cell-size;
+                row: 0;
+                col: 1;
+                clicked => {
+                    root.take-photo();
+                }
             }
         }
     }
@@ -235,7 +141,9 @@ export component DeskscopeWindow inherits Window {
         height: root.height;
         background: black;
         TouchArea {
-            clicked => { root.wake(); }
+            clicked => {
+                root.wake();
+            }
         }
     }
 }
